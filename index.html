@@ -1,0 +1,52 @@
+<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Østergades Pakkeshop — Miniature TV 0.2</title><style>html,body{margin:0;overflow:hidden;background:#c6d6dc;font-family:system-ui,-apple-system,sans-serif}canvas{display:block}#hud{position:fixed;left:3%;top:4%;pointer-events:none;color:white;text-shadow:0 2px 12px #172d3baa}h1{margin:0;font-size:clamp(19px,2.6vw,40px);font-weight:850}#hud small{display:block;font-size:clamp(11px,1vw,17px);margin-top:3px}#ticker{position:fixed;bottom:4%;left:3%;color:white;background:#133c5bc9;border-radius:30px;padding:11px 20px;font-size:clamp(12px,1.3vw,20px);font-weight:650}#fs{position:fixed;right:2%;top:3%;border:0;border-radius:12px;background:#fff9;color:#193c56;padding:11px 15px;cursor:pointer;font-weight:650}#fs:focus{outline:2px solid white}</style></head><body><div id="hud"><h1>📦 Østergades Pakkeshop</h1><small>En levende miniature af pakkeshoppen</small></div><div id="ticker">Velkommen til pakkeshoppen!</div><button id="fs">⛶ Fuldskærm</button><script type="module">
+import * as T from 'https://esm.sh/three@0.170.0';
+const scene=new T.Scene();scene.background=new T.Color('#b9d0dc');scene.fog=new T.Fog('#b9d0dc',28,60);
+const cam=new T.OrthographicCamera(-12,12,6.75,-6.75,.1,100);cam.position.set(15,12,21);cam.lookAt(0,1.3,0);
+const render=new T.WebGLRenderer({antialias:true,powerPreference:'high-performance'});render.setPixelRatio(Math.min(devicePixelRatio||1,2));render.setSize(innerWidth,innerHeight);render.shadowMap.enabled=true;render.shadowMap.type=T.PCFSoftShadowMap;render.outputColorSpace=T.SRGBColorSpace;render.toneMapping=T.ACESFilmicToneMapping;render.toneMappingExposure=1.35;document.body.prepend(render.domElement);
+scene.add(new T.HemisphereLight('#fff9eb','#738088',2.35));const sun=new T.DirectionalLight('#fff3df',2.7);sun.position.set(-7,17,12);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-18;sun.shadow.camera.right=18;sun.shadow.camera.top=18;sun.shadow.camera.bottom=-18;sun.shadow.bias=-.0002;scene.add(sun);
+const m=(c,metal=0)=>new T.MeshStandardMaterial({color:c,roughness:.84,metalness:metal});const M={white:m('#edeae3'),side:m('#dedbd4'),roof:m('#303338'),black:m('#23272b'),window:m('#8faeb8'),trim:m('#303338'),blue:m('#1652a0'),orange:m('#b66d58'),brick:m('#9b594b'),pave:m('#c6beb3'),asphalt:m('#777b7b'),step:m('#9f9c97'),wood:m('#c99b63'),tape:m('#e5cfaa'),green:m('#48674d'),wheel:m('#27292b'),silver:m('#c6ced0'),yellow:m('#f6d35e')};
+function block(w,h,d,x,y,z,material,parent=scene){let o=new T.Mesh(new T.BoxGeometry(w,h,d),material);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o}
+function cyl(r1,r2,h,x,y,z,material,parent=scene,segments=12){let o=new T.Mesh(new T.CylinderGeometry(r1,r2,h,segments),material);o.position.set(x,y,z);o.castShadow=true;parent.add(o);return o}
+function label(txt,x,y,z,w,h,options={}){let c=document.createElement('canvas');c.width=768;c.height=256;let ctx=c.getContext('2d');ctx.fillStyle=options.bg||'#174a9a';ctx.fillRect(0,0,768,256);ctx.fillStyle=options.color||'#fff';ctx.font=`${options.weight||800} ${options.fontSize||130}px Arial`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,384,133,740);let tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;let a=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({map:tex,side:T.DoubleSide}));a.position.set(x,y,z);scene.add(a);return a}
+// Realistic footprint: large asphalt forecourt, paved pedestrian street to the right.
+block(26,.3,19,0,-.2,0,m('#a5aa9e'));block(17,.04,10,-3,.005,4.4,M.asphalt);block(5,.06,18,8,.02,.5,M.pave);
+const joint=m('#ada69d');for(let z=-8;z<9;z+=.78)block(5,.008,.019,8,.056,z,joint);for(let x=5.6;x<10.5;x+=.85)block(.018,.008,18,x,.057,.5,joint);
+// Taller orange-red building behind shop, with vertical masonry ribs and dark raised parapet.
+block(5.4,5.3,6.3,3.9,2.65,-4.5,M.orange);block(5.7,1.05,6.5,3.9,5.75,-4.5,m('#504342'));for(let x=1.35;x<6.6;x+=.52)block(.08,4.8,.08,x,2.6,-1.3,M.brick);for(let z=-7.4;z<-1.4;z+=.6)block(.07,4.6,.07,6.62,2.5,z,M.brick);
+// Main low white shop, frontage faces +Z; right entrance set forward.
+block(12.6,3.05,4.85,-1.7,1.53,-.4,M.white);block(12.8,.22,5.2,-1.7,3.12,-.4,M.roof);
+// Roof slopes gently toward front, with dark edge trim, gutter, visible fascia and rafters.
+let roof=block(12.95,.18,5.3,-1.7,3.26,-.4,M.roof);roof.rotation.x=-.035;block(12.95,.18,.23,-1.7,3.04,2.26,M.black);for(let x=-7.8;x<4.5;x+=.65)block(.10,.12,.7,x,3.01,1.97,M.black);
+block(.07,2.8,.07,4.42,1.65,2.26,M.silver);block(.10,.09,4.9,4.42,3.04,-.3,M.black);
+// Windows framed in black, photo-like blue GLS headers, window poster panels.
+function windowAt(x){block(1.88,1.63,.12,x,1.77,2.065,M.trim);block(1.67,1.41,.13,x,1.77,2.14,M.window);block(1.67,.28,.16,x,2.32,2.23,M.blue);label('GLS.',x+.44,2.33,2.323,.63,.22);block(1.57,.48,.15,x,1.36,2.23,m('#d9dfdd'));label('Pakker til alle',x,1.35,2.33,1.2,.20,{bg:'#d9dfdd',color:'#30404a',fontSize:75});block(1.87,.055,.32,x,.89,2.15,M.white)}
+windowAt(-5.3);windowAt(-2.45);
+// Grey side entrance, narrow door and frame.
+block(1.07,2.11,.11,-7.05,1.09,2.09,M.trim);block(.86,1.88,.13,-7.05,1.10,2.18,m('#697b7e'));block(.08,.11,.09,-6.77,1.05,2.28,M.silver);
+// Protruding entrance bay with black canopy and dark tiled awning.
+block(2.65,2.94,1.20,3.1,1.48,2.13,M.white);block(1.43,2.32,.10,3.03,1.19,2.78,M.black);block(.61,.61,.12,3.03,1.82,2.87,M.window);
+// Round door glass feature.
+let round=new T.Mesh(new T.CylinderGeometry(.27,.27,.018,36),M.window);round.rotation.x=Math.PI/2;round.position.set(3.03,1.81,2.965);scene.add(round);
+block(3.1,.21,2.1,3.12,3.00,2.53,M.roof);block(3.2,.18,.18,3.12,2.85,3.55,M.black);for(let x=1.65;x<4.7;x+=.25){let ridge=block(.13,.035,1.67,x,3.12,2.6,M.trim);ridge.rotation.x=-.17}
+block(2.22,.17,1.12,3.06,.16,3.28,M.step);block(2.55,.16,1.55,3.06,.075,3.48,M.step);
+label('13A',2.12,2.37,2.84,.54,.25,{bg:'#edeae3',color:'#23272b',fontSize:115});label('GLS.',4.58,2.49,2.84,.85,.44);
+// Small mailbox, door bell, posters and private parking sign.
+block(.46,.42,.23,1.43,1.05,2.83,M.black);block(.14,.17,.12,2.02,1.64,2.85,M.silver);label('PRIVAT',.55,.88,2.26,.65,.30,{bg:'#202326',fontSize:93});label('GLS',-7.07,2.77,2.31,.58,.32);
+// Parcel props on loading area.
+function parcel(g,x,y,z,sc=1){block(.46*sc,.34*sc,.39*sc,x,y,z,M.wood,g);block(.055*sc,.344*sc,.395*sc,x,y,z,M.tape,g)}
+for(let i=0;i<8;i++){let g=new T.Group();parcel(g,0,.16,0,.65+Math.random()*.5);g.position.set(-6.4+i*.58,.05,3.15+(i%2)*.45);scene.add(g)}
+// Better people: separate torso, moving limbs, hair, face, parcels.
+const skins=['#e7b793','#bc8563','#f0c6a2'],shirts=['#eaa46e','#729db6','#85a47b','#c09ac0','#c9a45f'];
+function person(index,carrying){let g=new T.Group(),skin=m(skins[index%3]),shirt=m(shirts[index%5]);let torso=block(.36,.51,.24,0,1.01,0,shirt,g);let head=new T.Mesh(new T.SphereGeometry(.19,14,10),skin);head.position.y=1.43;head.castShadow=true;g.add(head);let hair=new T.Mesh(new T.SphereGeometry(.197,14,9),m(index%2?'#4d3b30':'#625242'));hair.scale.y=.45;hair.position.y=1.52;g.add(hair);let arms=[],legs=[];for(let side of [-1,1]){let leg=block(.14,.46,.15,side*.115,.46,0,m('#425166'),g);legs.push(leg);let arm=block(.115,.43,.14,side*.245,1.02,0,shirt,g);arms.push(arm)}if(carrying)parcel(g,0,1.02,.33,.77);scene.add(g);return {g,legs,arms,carrying}}
+const people=[];let counter=0,nextCustomer=1.5;
+function spawn(){if(people.length>12)return;let carry=Math.random()<.55,o=person(counter++,carry),left=Math.random()<.5;let start=new T.Vector3(left?-10.2:10.3,.08,left?5.5:6.1);o.g.position.copy(start);people.push({o,start,end:new T.Vector3(3.03,.08,4.22),phase:0,progress:0,speed:.15+Math.random()*.1,wait:0,seed:Math.random()*20});document.getElementById('ticker').textContent=carry?'📦 En kunde kommer for at sende en pakke':'🎁 En kunde kommer for at hente en pakke'}
+// Detailed van with blue logo panel, windshield, mirrors, four wheels.
+const van=new T.Group();block(2.2,1.2,1.16,-.4,.95,0,M.white,van);block(.88,.94,1.12,.98,.79,0,M.white,van);block(.18,.5,.94,1.45,1.05,0,M.window,van);block(1.25,.55,.035,-.55,1.05,.59,M.blue,van);block(.20,.17,.16,1.25,.97,.67,M.black,van);for(let x of [-1.13,1.05])for(let z of [-.6,.6]){let w=cyl(.24,.24,.14,x,.30,z,M.wheel,van);w.rotation.x=Math.PI/2;let hub=cyl(.11,.11,.15,x,.30,z,M.silver,van);hub.rotation.x=Math.PI/2}scene.add(van);van.position.set(-15,.06,5.5);let vanPhase=0,vanClock=0;
+let last=performance.now(),time=0;
+function tick(now){requestAnimationFrame(tick);const dt=Math.min(.06,(now-last)/1000);last=now;time+=dt;nextCustomer-=dt;if(nextCustomer<0){spawn();nextCustomer=3.5+Math.random()*4}
+for(let i=people.length-1;i>=0;i--){let p=people[i],o=p.o;if(p.phase===1){p.wait-=dt;if(p.wait<=0){p.phase=2;p.progress=0;o.g.visible=true;p.start=new T.Vector3(3.03,.08,4.22);p.end=new T.Vector3(Math.random()<.5?-10:10,.08,5.5+Math.random()*1.3);if(!o.carrying){parcel(o.g,0,1.02,.33,.77);o.carrying=true}}continue}
+p.progress+=dt*p.speed;o.g.position.lerpVectors(p.start,p.end,Math.min(1,p.progress));o.g.rotation.y=Math.atan2(p.end.x-p.start.x,p.end.z-p.start.z);let step=Math.sin(time*12+p.seed);o.legs[0].rotation.x=step*.45;o.legs[1].rotation.x=-step*.45;o.arms[0].rotation.x=-step*.3;o.arms[1].rotation.x=step*.3;o.g.position.y=.08+Math.abs(step)*.025;if(p.progress>=1){if(p.phase===0){p.phase=1;p.wait=2+Math.random()*3;o.g.visible=false}else{scene.remove(o.g);people.splice(i,1)}}}
+vanClock+=dt;if(vanPhase===0){van.position.x=Math.min(-4.5,van.position.x+dt*2.1);if(van.position.x>=-4.5){vanPhase=1;vanClock=0;document.getElementById('ticker').textContent='🚚 GLS-varevognen er ankommet!'}}else if(vanPhase===1&&vanClock>10)vanPhase=2;else if(vanPhase===2){van.position.x+=dt*2.4;if(van.position.x>16){vanPhase=3;vanClock=0}}else if(vanPhase===3&&vanClock>16){van.position.x=-15;vanPhase=0}
+render.render(scene,cam)}requestAnimationFrame(tick);
+function resize(){let aspect=innerWidth/innerHeight,viewHeight=13.8;cam.left=-viewHeight*aspect/2;cam.right=viewHeight*aspect/2;cam.top=viewHeight/2;cam.bottom=-viewHeight/2;cam.updateProjectionMatrix();render.setSize(innerWidth,innerHeight)}resize();addEventListener('resize',resize);document.getElementById('fs').onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.()};
+</script></body></html>
