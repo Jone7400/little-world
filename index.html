@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#091626"><title>Little World 0.3 · Den frodige planet</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#081321;color:#eef8f5;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+canvas{display:block;touch-action:none}#top{position:absolute;top:max(15px,env(safe-area-inset-top));left:16px;right:16px;pointer-events:none;display:flex;justify-content:space-between;align-items:start;gap:10px}
+.brand{background:#0a1c2acc;border:1px solid #a2d6c22c;border-radius:17px;padding:12px 16px;backdrop-filter:blur(12px)}h1{font-size:20px;margin:0;letter-spacing:.3px}#sub{font-size:12px;color:#b7d6c9;margin-top:4px}
+#stats{position:absolute;top:104px;left:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:min(280px,calc(100vw - 32px));pointer-events:none}
+.stat{background:#0a1c2ac9;border:1px solid #a2d6c21d;border-radius:13px;padding:9px 12px;backdrop-filter:blur(9px)}.stat span{display:block;color:#b4cfc3;font-size:11px}.stat b{display:block;font-size:19px;margin-top:1px;font-variant-numeric:tabular-nums}
+#bottom{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(560px,calc(100vw - 26px));background:#0a1c2ae8;border:1px solid #b8e6d12e;border-radius:19px;padding:12px;backdrop-filter:blur(12px)}
+.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}button{background:#254e46;color:#f2fff8;border:1px solid #a8e4c53c;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:650;cursor:pointer}button.primary{background:#2c8060}button:active{transform:scale(.98)}
+#hint{text-align:center;font-size:11px;color:#a5c6b9;margin-top:9px;line-height:1.5}
+#notice{position:absolute;right:16px;top:104px;max-width:210px;background:#0b2630d9;border-radius:12px;padding:10px 12px;color:#c5eddf;font-size:12px;line-height:1.5;pointer-events:none}
+@media(max-width:600px){#stats{top:91px;width:176px;gap:5px}.stat{padding:7px 9px}.stat b{font-size:16px}#notice{top:91px;max-width:125px;font-size:10px}#bottom{padding:10px}.actions button{font-size:12px;padding:9px 10px}h1{font-size:18px}}
+</style></head><body>
+<div id="top"><div class="brand"><h1>🌍 Little World <small style="font-size:11px;color:#9ddcbf">0.3</small></h1><div id="sub">Din levende planet</div></div></div>
+<div id="stats">
+<div class="stat"><span>🐾 Væsner</span><b id="creatures">—</b></div>
+<div class="stat"><span>🫐 Bærbuske</span><b id="bushes">—</b></div>
+<div class="stat"><span>🐣 Fødsler</span><b id="births">—</b></div>
+<div class="stat"><span>🍂 Dødsfald</span><b id="deaths">—</b></div>
+<div class="stat"><span>🌎 Planetens alder</span><b id="days">—</b></div>
+<div class="stat"><span>🍓 Modne bær</span><b id="berries">—</b></div>
+</div><div id="notice">Nu med skove, søer, blomster og søde små væsner. Naturen udvikler sig selv.</div>
+<div id="bottom"><div class="actions">
+<button class="primary" id="plant">🌱 Plant 10 buske</button><button id="speed">⏩ 1× tid</button><button id="pause">⏸ Pause</button><button id="reset">↻ Ny planet</button>
+</div><div id="hint">Træk for at dreje · Knib med to fingre for at zoome · Gemmes automatisk på denne enhed</div></div>
+<script type="module">
+import * as THREE from 'https://esm.sh/three@0.170.0';
+import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+const KEY='little-world-v03', R=3, DAY=120, STEP=.25, MAX_BUSHES=260, MAX_CREATURES=90;
+const $=id=>document.getElementById(id), rand=(a,b)=>a+Math.random()*(b-a), clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function randomUnit(){let z=rand(-1,1),a=rand(0,Math.PI*2),q=Math.sqrt(1-z*z);return [q*Math.cos(a),z,q*Math.sin(a)]}
+function norm(a){let l=Math.hypot(...a)||1;return a.map(x=>x/l)}
+function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]}
+function nearby(a,range){return norm([a[0]+rand(-range,range),a[1]+rand(-range,range),a[2]+rand(-range,range)])}
+function makeBush(p=randomUnit(),age=rand(0,80)){return {p,age,health:rand(65,100),berries:0,seedClock:rand(0,150),maxBerries:Math.floor(rand(3,8))}}
+function makeCreature(p=randomUnit(),generation=1,hue=rand(15,330),speed=rand(.6,1.3)){return {p,age:rand(0,25),energy:rand(65,110),generation,hue,speed,heading:randomUnit(),reproCooldown:rand(15,90)}}
+function fresh(){return {version:3,lastSaved:Date.now(),seconds:0,births:0,deaths:0,generation:1,bushes:Array.from({length:55},()=>makeBush()),creatures:Array.from({length:15},()=>makeCreature())}}
+let state;try{state=JSON.parse(localStorage.getItem(KEY))}catch{}
+if(!state||state.version!==3||!Array.isArray(state.bushes)||!Array.isArray(state.creatures))state=fresh();
+const scene=new THREE.Scene();scene.background=new THREE.Color('#081321');
+const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,120);camera.position.set(0,4.7,11);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setClearColor(0x071323);renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.35;
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.prepend(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.enablePan=false;controls.minDistance=4;controls.maxDistance=17;controls.rotateSpeed=.65;
+scene.add(new THREE.HemisphereLight(0xdafaff,0x294124,2.5));
+const sunlight=new THREE.DirectionalLight(0xffedc7,2.4);sunlight.position.set(7,8,6);scene.add(sunlight);
+// Colorful terrain, painted directly onto a high resolution sphere.
+const terrain=new THREE.SphereGeometry(R,128,96), positions=terrain.attributes.position;
+const colors=[], tempColor=new THREE.Color();
+const pondCenters=[norm([.6,.75,.2]),norm([-.7,-.2,.7]),norm([.3,-.7,-.5])];
+const forestCenters=[norm([-.65,.55,-.5]),norm([.6,-.45,.6]),norm([-.2,-.5,-.8])];
+const noise=p=>Math.sin(p[0]*29+p[2]*13)*Math.cos(p[1]*23-p[0]*11)*.5+Math.sin(p[2]*47+p[1]*18)*.18;
+function pondValue(p){return Math.max(...pondCenters.map(q=>dot(p,q)))}
+function forestValue(p){return Math.max(...forestCenters.map(q=>dot(p,q)))}
+function biome(p){
+ const pond=pondValue(p),forest=forestValue(p),n=noise(p);
+ if(pond>.965+n*.009)return 'water';
+ if(pond>.946+n*.008)return 'sand';
+ if(forest>.83+n*.018)return 'forest';
+ if(n>.39)return 'flowers';
+ return 'grass';
+}
+const palette={water:'#3cacc6',sand:'#e8d69a',forest:'#388b52',flowers:'#92bf5b',grass:'#79ba5d'};
+for(let i=0;i<positions.count;i++){let p=norm([positions.getX(i),positions.getY(i),positions.getZ(i)]),b=biome(p);tempColor.set(palette[b]);let v=noise(p)*.11;tempColor.offsetHSL(0,0,v);colors.push(tempColor.r,tempColor.g,tempColor.b)}
+terrain.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+const planet=new THREE.Mesh(terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.97}));scene.add(planet);
+const glow=new THREE.Mesh(new THREE.SphereGeometry(R+0.04,48,32),new THREE.MeshBasicMaterial({color:0x96e4bb,transparent:true,opacity:.035,side:THREE.BackSide}));scene.add(glow);
+const world=new THREE.Group();scene.add(world);
+const yaxis=new THREE.Vector3(0,1,0);
+function place(obj,p,height=0){const v=new THREE.Vector3(...p).normalize();obj.position.copy(v).multiplyScalar(R+height);obj.quaternion.setFromUnitVectors(yaxis,v)}
+// Decor: grasses, flower fields, rocks, clusters of stylized trees, and tiny mushrooms.
+const grassMats=[0x9edc73,0x4d9d50,0xb9d77c].map(color=>new THREE.MeshStandardMaterial({color,roughness:1,side:THREE.DoubleSide}));
+const grassGeo=new THREE.ConeGeometry(.018,.115,3);
+for(let i=0;i<1150;i++){let p=randomUnit(),b=biome(p);if(b==='water'||b==='sand')continue;let m=new THREE.Mesh(grassGeo,grassMats[Math.floor(rand(0,3))]);place(m,p,.038);m.scale.setScalar(rand(.55,1.4));world.add(m)}
+const rockMat=new THREE.MeshStandardMaterial({color:0xaeb8a7,roughness:1}),rockGeo=new THREE.DodecahedronGeometry(.09,0);
+for(let i=0;i<95;i++){let p=randomUnit();if(biome(p)==='water')continue;let m=new THREE.Mesh(rockGeo,rockMat);place(m,p,.045);m.scale.setScalar(rand(.5,1.7));world.add(m)}
+const flowerGeo=new THREE.SphereGeometry(.026,6,5),flowerMats=[0xffd96a,0xff91bd,0xf6f0db,0xc4a5fc].map(color=>new THREE.MeshStandardMaterial({color,roughness:.8}));
+for(let i=0;i<410;i++){let p=randomUnit();if(['water','sand'].includes(biome(p)))continue;let flower=new THREE.Mesh(flowerGeo,flowerMats[Math.floor(rand(0,flowerMats.length))]);place(flower,p,.085);flower.scale.setScalar(rand(.6,1.3));world.add(flower)}
+const barkMat=new THREE.MeshStandardMaterial({color:0x816344,roughness:1}),trunkGeo=new THREE.CylinderGeometry(.042,.07,.34,6);
+const crownGeo=new THREE.IcosahedronGeometry(.19,1),crownMats=[0x3b9958,0x58b36b,0x2c8050,0x83b65b,0xe3a0b9].map(color=>new THREE.MeshStandardMaterial({color,roughness:1}));
+for(let i=0;i<135;i++){let p=randomUnit(),b=biome(p);if(b==='water'||b==='sand'||(b!=='forest'&&Math.random()<.72))continue;
+ let g=new THREE.Group(),trunk=new THREE.Mesh(trunkGeo,barkMat);trunk.position.y=.19;g.add(trunk);
+ let crown=new THREE.Mesh(crownGeo,crownMats[Math.floor(rand(0,crownMats.length))]);crown.position.y=.45;crown.scale.set(rand(.8,1.25),rand(1,1.6),rand(.8,1.25));g.add(crown);
+ let second=new THREE.Mesh(crownGeo,crown.material);second.position.set(.1,.52,.06);second.scale.set(.65,.75,.65);g.add(second);
+ place(g,p,.015);g.scale.setScalar(rand(.7,1.35));world.add(g)
+}
+const starsGeo=new THREE.BufferGeometry(),stars=[];for(let i=0;i<950;i++){let p=randomUnit(),r=rand(25,65);stars.push(p[0]*r,p[1]*r,p[2]*r)}starsGeo.setAttribute('position',new THREE.Float32BufferAttribute(stars,3));scene.add(new THREE.Points(starsGeo,new THREE.PointsMaterial({color:0xd6e9ff,size:.085,sizeAttenuation:true})));
+const leafMat=new THREE.MeshStandardMaterial({color:0x4caa61,roughness:1}),stemMat=new THREE.MeshStandardMaterial({color:0x567e3c}),berryMat=new THREE.MeshStandardMaterial({color:0xd64d7c,roughness:.7});
+const bushGeo=new THREE.IcosahedronGeometry(.115,1),stemGeo=new THREE.CylinderGeometry(.026,.04,.17,5),berryGeo=new THREE.SphereGeometry(.025,6,5);
+const bodyGeo=new THREE.SphereGeometry(.115,10,8),eyeGeo=new THREE.SphereGeometry(.017,6,5),eyeMat=new THREE.MeshStandardMaterial({color:0x12272c});
+let bushMeshes=[],creatureMeshes=[];
+function buildBush(){let g=new THREE.Group(),stem=new THREE.Mesh(stemGeo,stemMat),leaf=new THREE.Mesh(bushGeo,leafMat);stem.position.y=.08;leaf.position.y=.18;g.add(stem,leaf);for(let i=0;i<7;i++){let a=i*2.39996,b=new THREE.Mesh(berryGeo,berryMat);b.position.set(Math.cos(a)*.075,.21+(i%3)*.028,Math.sin(a)*.075);g.add(b)}world.add(g);return g}
+function buildCreature(){
+ let g=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.75}),body=new THREE.Mesh(bodyGeo,mat);
+ body.position.y=.16;body.scale.set(1.1,.95,1.1);g.add(body);
+ // Ears, snout, eyes, and tail make the creature readable even when zoomed out.
+ let earGeo=new THREE.CapsuleGeometry(.027,.10,3,6);
+ for(let side of [-1,1]){
+  let ear=new THREE.Mesh(earGeo,mat);ear.position.set(side*.065,.31,-.025);ear.rotation.z=side*-.22;g.add(ear);
+  let eye=new THREE.Mesh(eyeGeo,eyeMat);eye.position.set(side*.057,.20,.098);eye.scale.setScalar(1.1);g.add(eye);
+  let foot=new THREE.Mesh(new THREE.SphereGeometry(.034,6,5),mat);foot.position.set(side*.075,.06,.055);g.add(foot)
+ }
+ let snout=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),new THREE.MeshStandardMaterial({color:0xf4c4b9}));snout.position.set(0,.13,.117);g.add(snout);
+ let tail=new THREE.Mesh(new THREE.SphereGeometry(.048,7,6),mat);tail.position.set(0,.15,-.12);g.add(tail);
+ world.add(g);return g
+}
+function syncMeshes(){
+while(bushMeshes.length<state.bushes.length)bushMeshes.push(buildBush());
+while(bushMeshes.length>state.bushes.length){let m=bushMeshes.pop();world.remove(m)}
+state.bushes.forEach((b,i)=>{let m=bushMeshes[i],growth=clamp(b.age/90,.12,1);place(m,b.p,.015);m.scale.setScalar(growth);for(let j=0;j<7;j++)m.children[j+2].visible=j<Math.floor(b.berries);m.children[1].material=leafMat});
+while(creatureMeshes.length<state.creatures.length)creatureMeshes.push(buildCreature());
+while(creatureMeshes.length>state.creatures.length){let m=creatureMeshes.pop();world.remove(m);m.children[0].material.dispose()}
+state.creatures.forEach((c,i)=>{let m=creatureMeshes[i];place(m,c.p,.02);m.scale.setScalar(clamp(.7+c.age/100,.65,1.2));m.children[0].material.color.setHSL(c.hue/360,.7,.66)});
+}
+function simulate(dt){
+state.seconds+=dt;
+for(const b of state.bushes){
+ b.age+=dt;b.seedClock+=dt;
+ const mature=clamp((b.age-35)/85,0,1);
+ if(mature>0&&b.health>20)b.berries=clamp(b.berries+dt*.025*mature*(b.health/100),0,b.maxBerries);
+ if(b.age>800)b.health-=dt*.16;
+ if(b.seedClock>125&&mature>.8&&b.berries>1&&state.bushes.length<MAX_BUSHES){b.seedClock=0;b.berries=Math.max(0,b.berries-1);state.bushes.push(makeBush(nearby(b.p,.28),0))}
+}
+state.bushes=state.bushes.filter(b=>b.health>0);
+for(const c of state.creatures){
+ c.age+=dt;c.reproCooldown-=dt;
+ c.energy-=dt*(.16+.085*c.speed);
+ let target=null,best=-1;
+ for(const b of state.bushes){if(b.berries<.95||b.age<40)continue;let d=dot(c.p,b.p);if(d>best){best=d;target=b}}
+ if(target&&best>.65){
+   const toward=[target.p[0]-c.p[0]*best,target.p[1]-c.p[1]*best,target.p[2]-c.p[2]*best];
+   c.p=norm([c.p[0]+toward[0]*dt*.06*c.speed,c.p[1]+toward[1]*dt*.06*c.speed,c.p[2]+toward[2]*dt*.06*c.speed]);
+   if(dot(c.p,target.p)>.9995&&target.berries>=1){target.berries-=1;c.energy=clamp(c.energy+29,0,160);target.health=clamp(target.health+.12,0,100)}
+ }else{c.heading=nearby(c.heading,.5);c.p=norm([c.p[0]+c.heading[0]*dt*.025*c.speed,c.p[1]+c.heading[1]*dt*.025*c.speed,c.p[2]+c.heading[2]*dt*.025*c.speed])}
+ if(c.energy>112&&c.age>55&&c.reproCooldown<=0&&state.creatures.length<MAX_CREATURES){
+  c.energy-=53;c.reproCooldown=rand(85,150);let child=makeCreature(nearby(c.p,.06),c.generation+1,(c.hue+rand(-18,18)+360)%360,clamp(c.speed+rand(-.12,.12),.4,1.65));child.energy=54;child.age=0;state.creatures.push(child);state.births++;state.generation=Math.max(state.generation,child.generation);
+ }
+}
+const before=state.creatures.length;state.creatures=state.creatures.filter(c=>c.energy>0&&c.age<750);state.deaths+=before-state.creatures.length;
+if(state.creatures.length===0&&state.seconds>20){state.creatures.push(makeCreature());state.creatures.push(makeCreature());$('notice').textContent='🌱 Naturen har skabt nyt liv efter en uddøen.'}
+if(state.bushes.length<8)for(let i=0;i<6;i++)state.bushes.push(makeBush(randomUnit(),rand(0,50)));
+}
+function save(){state.lastSaved=Date.now();try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){$('notice').textContent='Kunne ikke gemme lokalt. Kontrollér browserens lagerplads.'}}
+let away=Math.max(0,Date.now()-(state.lastSaved||Date.now()))/1000;
+let catchup=Math.min(away,3600); // max 1 hour of accelerated offline evolution
+for(let t=0;t<catchup;t+=2)simulate(Math.min(2,catchup-t));
+if(away>3)$('notice').textContent=`🌍 Planeten udviklede sig i ${Math.round(catchup)} sekunder, mens du var væk${away>3600?' (maks. 1 time simuleret)':''}.`;
+syncMeshes();save();
+let paused=false,speed=1,previous=performance.now(),acc=0,lastHud=0;
+function hud(){let bs=state.bushes,cs=state.creatures;$('creatures').textContent=cs.length;$('bushes').textContent=bs.length;$('births').textContent=state.births;$('deaths').textContent=state.deaths;$('days').textContent=(1+Math.floor(state.seconds/DAY));$('berries').textContent=Math.floor(bs.reduce((a,b)=>a+b.berries,0));$('sub').textContent=`Generation ${state.generation} · ${paused?'Sat på pause':'Økosystemet lever'}`}
+function frame(t){requestAnimationFrame(frame);let delta=Math.min(.15,(t-previous)/1000);previous=t;if(!paused){acc+=delta*speed;let loops=0;while(acc>=STEP&&loops++<20){simulate(STEP);acc-=STEP}syncMeshes()}if(t-lastHud>300){hud();lastHud=t}controls.update();renderer.render(scene,camera)}
+requestAnimationFrame(frame);
+$('plant').onclick=()=>{for(let i=0;i<10&&state.bushes.length<MAX_BUSHES;i++)state.bushes.push(makeBush(randomUnit(),0));syncMeshes();save();$('notice').textContent='🌱 10 nye buske er plantet. De skal vokse, før de giver bær.'};
+$('speed').onclick=()=>{speed=speed===1?4:speed===4?12:1;$('speed').textContent=`⏩ ${speed}× tid`};
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶ Fortsæt':'⏸ Pause';save()};
+$('reset').onclick=()=>{if(confirm('Vil du starte en helt ny planet? Den nuværende udvikling slettes.')){state=fresh();syncMeshes();save();$('notice').textContent='🌎 En ny planet er født.'}};
+setInterval(save,5000);addEventListener('pagehide',save);addEventListener('visibilitychange',()=>{if(document.hidden)save()});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script></body></html>
